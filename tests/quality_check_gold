@@ -1,0 +1,117 @@
+/*
+===============================================================================
+DDL Script: Create Gold Views
+===============================================================================
+Script Purpose:
+    This script creates views for the Gold layer in the data warehouse.
+    The Gold layer represents the final dimension and fact tables (Star Schema)
+    
+    Each view performs transformations and combines data from the Silver layer
+    to produce a clean, enriched, and business-ready dataset.
+
+Usage:
+    - These views can be queried directly for analytics and reporting.
+===============================================================================
+*/
+
+
+
+PRINT'-----------------------------------------------------------------------------------------'
+PRINT'TEST PROFORM TO CREATE AN GOLD LAYERS'
+PRINT'-----------------------------------------------------------------------------------------'
+
+
+SELECT cst_id,count(*) from (
+SELECT ci.cst_id,
+ci.cst_key,
+ca.cid,
+ci.cst_firstname,
+ci.cst_lastname,
+ci.cst_material_status,
+ci.cst_gndr,
+ci.cst_create_date,
+ca.bdate,
+ca.gen,
+la.cntry
+FROM silver.crm_cust_info ci
+LEFT JOIN silver.erp_cust_az12 ca 
+ON			ci.cst_key = ca.cid
+LEFT JOIN silver.erp_loc_a101 la
+ON			ci.cst_key = la.cid 
+)t GROUP BY cst_id 
+HAVING COUNT(*) > 1 ;
+
+
+SELECT DISTINCT
+ci.cst_gndr,
+ca.gen,
+CASE WHEN ci.cst_gndr != 'n/a' THEN ci.cst_gndr --CRM IS MASTER FOR GENDER INFO 
+	ELSE COALESCE(ca.gen, 'n/a')
+END AS new_gen
+FROM silver.crm_cust_info ci
+LEFT JOIN silver.erp_cust_az12 ca 
+ON			ci.cst_key = ca.cid
+LEFT JOIN silver.erp_loc_a101 la
+ON			ci.cst_key = la.cid 
+ORDER BY 1,2
+
+PRINT'============================================================================================'
+PRINT 'END OF gold.dim_customer TEST'
+PRINT'============================================================================================'
+------------------------------------------------------------------------------------------------
+
+
+SELECT 
+pn.prd_id AS product_id,
+pn.prd_key AS product_number,
+pn.prd_nm AS product_name,
+pn.cat_id category_id,
+pc.cat AS prdouct_category,
+pc.subcat AS prdouct_sub_category,
+pc.maintenance AS maintenance,
+
+pn.prd_cost AS product_cost,
+pn.prd_line AS product_line,
+pn.prd_start_dt AS start_date
+FROM silver.crm_prd_info pn  
+LEFT JOIN silver.erp_px_cat_g1v2 pc
+on pn.cat_id = pc.id
+WHERE pn.prd_end_dt IS NULL
+
+-----------------------------------------------------------------------------------------------------
+
+SELECT prd_key,COUNT(*) FROM  (
+SELECT 
+pn.prd_id,
+pn.cat_id,
+pn.prd_key,
+pn.prd_nm,
+pn.prd_cost,
+pn.prd_line,
+pn.prd_start_dt,
+pc.cat,
+pc.subcat,
+pc.maintenance
+FROM silver.crm_prd_info pn  
+LEFT JOIN silver.erp_px_cat_g1v2 pc
+on pn.cat_id = pc.id
+WHERE pn.prd_end_dt IS NULL ---FILTER OUT ALL HISTORICAL DATA 
+)T GROUP BY prd_key
+HAVING COUNT(*) > 1
+ORDER BY 1,2;
+
+----------------------------------------------------------------
+
+SELECT * 
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_customer c
+ON c.customer_key = f.customer_key 
+where c.customer_key is null;
+
+SELECT * 
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_products p
+ON p.product_key = f.product_key 
+where p.product_key  is null;
+
+------------------------------------------------------------------------------
